@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import FastImage from 'react-native-fast-image';
 import { StyleSheet, View, Text } from 'react-native';
+import PlaceholderFastImage from './PlaceholderFastImage';
 
 export interface LoadingImageEvent { 
     millis: number
@@ -41,7 +42,6 @@ export default class LoadingImage extends Component<LoadingImageProps, LoadingIm
     }
 
     endTimer() {
-        console.log("end timer")
         let { url, onLoaded } = this.props;
         this.endTime = new Date().getTime();
         let totalTime = this.endTime - this.startTime;
@@ -62,15 +62,15 @@ export default class LoadingImage extends Component<LoadingImageProps, LoadingIm
         return (
             <View style={styles.container}>
                 <View style={styles.image}>
-                    <FastImage
-                        style={{ width: 75, height: 75, margin: 5 }}
+                    <PlaceholderFastImage style={{ width: 75, height: 75, margin: 5 }}
                         source={{
                             uri: url,
                             priority: FastImage.priority.normal,
                         }}
                         onLoadStart={() => { this.startTimer() }}
-                        onLoad={() => { this.endTimer() }}
-                    />
+                        onLoad={() => { this.endTimer() }}>
+
+                    </PlaceholderFastImage>
                 </View>
                 <View style={styles.timer}>
                     <Text>{url}</Text>

@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, SafeAreaView, ScrollView } from 'react-native';
+import FastImage, { Source } from 'react-native-fast-image';
 import LoadingImage, { LoadingImageEvent } from '../components/LoadingImage';
 import LoadingMediaEvent from '../types/LoadingMediaEvent';
 
@@ -13,11 +14,12 @@ export interface PicsumImage {
 }
 
 export interface PhotoMediaLibraryProps {
+    navigation : any
 }
 
 export interface PhotoMediaLibraryState {
     images: PicsumImage[]
-    refreshing: boolean,
+    showImages: boolean,
     loadingTimes: LoadingMediaEvent[],
     sum: number,
     average: number,
@@ -30,15 +32,17 @@ export interface PhotoMediaLibraryState {
 export default class PhotoMediaLibrary extends Component<PhotoMediaLibraryProps, PhotoMediaLibraryState> {
     startTime : number
     endTime : number
+    nextPageForPreloading : PicsumImage[]
+    currentPage : number
+    unsubscribeFocusListener: () => void
     
     constructor(props : PhotoMediaLibraryProps) {
         super(props);
-        this.refresh = this.refresh.bind(this);
-        this.getPhotos = this.getPhotos.bind(this);
+        this.loadMore = this.loadMore.bind(this);
 
         this.state = {
             images : [],
-            refreshing: false,
+            showImages: false,
             loadingTimes: [],
             sum: 0,
             average: 0,
@@ -50,25 +54,67 @@ export default class PhotoMediaLibrary extends Component<PhotoMediaLibraryProps,
 
         this.startTime = 0;
         this.endTime = 0;
+        this.currentPage = 0;
+        this.nextPageForPreloading = [];
+        this.unsubscribeFocusListener = () => {};
+
+    }
+
+    componentWillUnmount() {
+        this.unsubscribeFocusListener();
     }
 
     componentDidMount() {
-        this.startTime = new Date().getTime();
+        let { navigation } = this.props;
+        this.unsubscribeFocusListener  = navigation.addListener('focus', this.focusPage.bind(this));
+        // fetch(`https://picsum.photos/v2/list?page=${this.currentPage}&limit=20`).then(res => res.json()).then((result : PicsumImage[]) => {
+        //     this.nextPageForPreloading = result;
+        //     console.log("for preload")
+        //     FastImage.preload(this.nextPageForPreloading.map(r => {return { uri : r.download_url, priority: FastImage.priority.normal }}));
+        //     this.addPreloadedNext();
+        // }).catch((err) => {
+        //     console.log("error:", err);
+        // });
+        this.addPreloadedNext();
+        console.log("component did mount")
     }
 
-    getPhotos() {
-        this.fetchImages();
+    focusPage() {
+        console.log("focus page", this.state.showImages)
+        if (!this.state.showImages) {
+            this.addPreloadedNext();
+            this.setState({ showImages: true });
+        }
     }
 
-    fetchImages() {
-        this.setState({ refreshing: true });
-        fetch("https://picsum.photos/v2/list?page=2&limit=20").then(res => res.json()).then((result : PicsumImage[]) => {
-            console.log("render imageItems", result[0]);
-            this.setState({ images: result, refreshing: false });
-        }).catch((err) => {
-            console.log("error:", err)
-            this.setState({ refreshing: false });
+    addPreloadedNext() {
+        console.log("addPreloadedNext")
+        this.setState({
+            images : [...this.state.images, ...this.nextPageForPreloading]
         });
+        this.nextPageForPreloading = [];
+        fetch(`https://picsum.photos/v2/list?page=${this.currentPage}&limit=20`).then(res => res.json()).then((result : PicsumImage[]) => {
+            this.nextPageForPreloading = result;
+            FastImage.preload(this.nextPageForPreloading.map(r => {return { uri : r.download_url, priority: FastImage.priority.normal }}));
+            this.currentPage++;
+        }).catch((err) => {
+            console.log("error:", err);
+        });
+    }
+
+    // componentDidUpdate(prevProps: Readonly<PhotoMediaLibraryProps>, prevState: Readonly<PhotoMediaLibraryState>) {
+    //     if (prevState.page !== this.state.page) {
+    //         fetch(`https://picsum.photos/v2/list?page=${this.state.page}&limit=20`).then(res => res.json()).then((result : PicsumImage[]) => {
+    //             this.setState({ images : [...this.state.images, ...result] });
+    //         });
+    //     }
+    // }
+
+    loadMore() {
+        // this.setState({
+        //     page: this.state.page + 1
+        // });
+        this.addPreloadedNext();
     }
 
     onLoaded(event : LoadingMediaEvent) {
@@ -113,11 +159,6 @@ export default class PhotoMediaLibrary extends Component<PhotoMediaLibraryProps,
         );
     }
 
-    refresh() {
-        this.setState({ images : [], refreshing: true });
-        this.fetchImages();
-    }
-
     renderNoElements() {
         return (
             <View>
@@ -127,10 +168,10 @@ export default class PhotoMediaLibrary extends Component<PhotoMediaLibraryProps,
     }
 
     renderLoadingTimes() {
-        let { refreshing, images, sum, average, variance, standardDeviation, minimum, maximum } = this.state;
+        let { showImages, images, sum, average, variance, standardDeviation, minimum, maximum } = this.state;
         
         return (
-            !refreshing &&
+            showImages &&
             (<View>
                 <Text>Total images: {images.length}</Text>
                 <Text>Total loading: {sum}ms</Text>
@@ -144,7 +185,7 @@ export default class PhotoMediaLibrary extends Component<PhotoMediaLibraryProps,
     }
 
     render() {
-        let { images, refreshing } = this.state;
+        let { images, showImages } = this.state;
 
         return (
             <ScrollView
@@ -152,10 +193,10 @@ export default class PhotoMediaLibrary extends Component<PhotoMediaLibraryProps,
                 style={styles.scrollView}>
                 <View style={{ flex: 1 }}>
                     { this.renderLoadingTimes() }
-                    { !refreshing && <TouchableOpacity onPress={this.refresh} style={styles.refresh}>
-                        <Text style={styles.refreshText}>Get Photos</Text>
-                    </TouchableOpacity> }
-                    { !refreshing ? (images.length > 0 ? this.renderImages() : this.renderNoElements()) : this.renderRefreshing() }
+                    { showImages && (images.length > 0 ? this.renderImages() : this.renderNoElements()) }
+                    <TouchableOpacity onPress={this.loadMore} style={styles.refresh}>
+                        <Text style={styles.refreshText}>Load more</Text>
+                    </TouchableOpacity>
                 </View>
             </ScrollView>
         )
